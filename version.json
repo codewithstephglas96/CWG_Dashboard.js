@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
+  "version": "5.0.0",
   "releaseDate": "2026-07-06",
-  "minimumLoaderVersion": "1.0.0",
+  "minimumLoaderVersion": "9.0.0",
   "changeLog": [
     "Fixed Hot Marks logic to exclude current week plays",
     "Added dashboard-style timeline for hot numbers",
