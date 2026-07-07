@@ -163,7 +163,7 @@ async function createWidget() {
 
   // FOOTER
   widget.addSpacer(11);
-  let foot = widget.addText("CODEWITHGLASGOW • PlayWhe Chart • v4.5Jun3");
+  let foot = widget.addText("CODEWITHGLASGOW • PlayWhe Chart • v5.Jul6");
   foot.font = Font.mediumSystemFont(12); foot.textColor = new Color("#555555"); foot.centerAlignText();
 
   widget.refreshAfterDate = new Date(Date.now() + 4 * 60 * 1000);
@@ -1168,7 +1168,7 @@ function renderIntelligentAnalysis(weeks) {
       category: 'QUADRUPLE',
       color: '#ff375f',
       priority: 3,
-      text: `✅ #${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#ff375f;">QUADRUPLE</span> Play Streak!${dateStr}`
+      text: `#${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#ff375f;">QUADRUPLE</span> Play Streak!<br><center>${dateStr}</center>`
     });
   });
 
@@ -1182,7 +1182,7 @@ function renderIntelligentAnalysis(weeks) {
       category: 'TRIPLE',
       color: '#ff9d00',
       priority: 2,
-      text: `✅ #${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#ff9d00;">TRIPLE</span> Play Streak!${dateStr}`
+      text: `#${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#ff9d00;">TRIPLE</span> Play Streak!<br><center>${dateStr}</center>`
     });
   });
 
@@ -1198,7 +1198,7 @@ function renderIntelligentAnalysis(weeks) {
       category: 'DOUBLE_PLAYED',
       color: '#32d74b',
       priority: 1,
-      text: `A Double #${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Played!${dateStr}`
+      text: `Double: #${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Played!<br><center>${dateStr}</center>`
     });
   });
 
@@ -1214,7 +1214,7 @@ function renderIntelligentAnalysis(weeks) {
         category: 'DOUBLE_COMPLETED',
         color: '#32d74b',
         priority: 1,
-        text: `✅ #${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#32d74b;">DOUBLE</span> Play Streak!${dateStr}`
+        text: `#${num}${spiritEmoji[num] || ''} (${spiritNames[num] || 'Unknown'}) Has Completed <span style="color:#32d74b;">DOUBLE</span> Play Streak!<br><center>${dateStr}</center>`
       });
     }
   });
