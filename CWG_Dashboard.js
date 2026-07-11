@@ -2,7 +2,7 @@
 // NLCB CHARTS WIDGET - PLAY WHE CHART
 // Created By: CODEWITHGLASGOW or CWG
 // Build: Widget/Full-Screen Play Whe Chart
-// Version 5.4.3
+// Version 5.4.4
 // Last Modified: July 10 2026
 // ========================================
 
@@ -197,12 +197,12 @@ async function presentFullScreenCharts() {
     await wv.present();
 }
 
-// =========================================
+// ======================================
 // Additional Features Added Here
-// =========================================
-// =========================================
+// ======================================
+// ======================================
 // RENDER SHELF CONTAINER INSIDE CHART
-// =========================================
+// ======================================
 function renderShelfContainer(weeksData) {
     // Process the weeks data for shelf marks
     const shelfData = processShelfData(weeksData);
@@ -898,6 +898,560 @@ function renderPlayWheShelfContainer(marks, numberColors, intervals, hotMarks, o
 }
 ///////////////////////////////////////////
 
+// =====================================
+// WHEWHE PICKS EVERY FRI-SAT-SUN - SMART CONTAINER
+// Shows ALL played numbers + Scrollable Top 4 picks
+// Smart visibility: appears from Thursday EVE onward
+// Defaults to current day in carousel
+// ======================================
+function renderWheWheWeekendPicks(weeksData) {
+  if (!weeksData || weeksData.length === 0) {
+    return `<div style="background: #ffffff; border-radius: 12px; padding: 20px; border: 1px solid #dddddd; text-align:center; color:#999;">📊 No data available</div>`;
+  }
+
+  // ====================================
+  // CONFIGURATION
+  // ====================================
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const slots = ["MOR", "MID", "NON", "EVE"];
+  const weekendDays = ["Friday", "Saturday", "Sunday"];
+  
+  // Spirit Emoji mapping
+  const spiritEmoji = {
+    1: "🔪", 2: "👵🏾", 3: "🚕", 4: "⚰️", 5: "👨🏾‍🦳", 6: "🤰🏽", 7: "🐗", 8: "🐯",
+    9: "🐮", 10: "🐒", 11: "🦅", 12: "🤴🏽", 13: "🐸", 14: "💰", 15: "🤧", 16: "💃🏽",
+    17: "🐦‍⬛", 18: "🚤", 19: "🐎", 20: "🐶", 21: "👄", 22: "🐀", 23: "🏡", 24: "🫅🏽",
+    25: "🐢", 26: "🐔", 27: "🐍", 28: "🐟", 29: "🍻", 30: "🐈‍⬛", 31: "👵🏾", 32: "🦐",
+    33: "🕷️", 34: "👨🏾‍🦯", 35: "🐍", 36: "🫏"
+  };
+
+  const spiritNames = {
+    1: "Centipede", 2: "Old Lady", 3: "Carriage", 4: "Dead Man", 5: "Parson Man",
+    6: "Belly", 7: "Hog", 8: "Tiger", 9: "Cattle", 10: "Monkey",
+    11: "Corbeau", 12: "King", 13: "Crapaud", 14: "Money", 15: "Sick Woman",
+    16: "Jamette", 17: "Pigeon", 18: "Water Boat", 19: "Horse", 20: "Dog",
+    21: "Mouth", 22: "Rat", 23: "House", 24: "Queen", 25: "Morrocoy",
+    26: "Fowl", 27: "Little Snake", 28: "Red Fish", 29: "Opium Man", 30: "House Cat",
+    31: "Parson Wife", 32: "Shrimp", 33: "Spider", 34: "Blind Man", 35: "Big Snake", 36: "Donkey"
+  };
+
+  // ====================================
+  // SORT WEEKS CHRONOLOGICALLY
+  // ====================================
+  const sortedWeeks = [...weeksData].sort((a, b) => {
+    let pa = a.startDate.split(" ");
+    let pb = b.startDate.split(" ");
+    return new Date(pa[2] + "-" + pa[1] + "-" + pa[0]) - new Date(pb[2] + "-" + pb[1] + "-" + pb[0]);
+  });
+
+  const currentWeek = sortedWeeks[sortedWeeks.length - 1];
+  const historicalWeeks = sortedWeeks.slice(0, -1);
+
+  const now = new Date();
+  const todayIdx = now.getDay();
+  const todayName = dayNames[todayIdx];
+  const currentHour = now.getHours();
+
+  // ====================================
+  // SMART VISIBILITY CHECK
+  // ====================================
+  function shouldShowContainer() {
+    const isMonday = todayName === "Monday";
+    const isTuesday = todayName === "Tuesday";
+    const isWednesday = todayName === "Wednesday";
+    const isThursday = todayName === "Thursday";
+    const isFriday = todayName === "Friday";
+    const isSaturday = todayName === "Saturday";
+    const isSunday = todayName === "Sunday";
+    
+    if (isThursday && currentHour < 18) return false;
+    if (isMonday || isTuesday || isWednesday) return false;
+    if (isThursday && currentHour >= 18) return true;
+    if (isFriday || isSaturday || isSunday) return true;
+    
+    return false;
+  }
+
+  // ====================================
+  // HELPER: GET DRAW FROM WEEK
+  // ====================================
+  function getDraw(week, dayName, slot) {
+    if (!week) return null;
+    const day = week.days.find(d => d.dayName === dayName);
+    if (!day) return null;
+    const val = day.draws[slot];
+    return val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY" ? parseInt(val, 10) : null;
+  }
+
+  function getDrawWithDate(week, dayName, slot) {
+    if (!week) return null;
+    const day = week.days.find(d => d.dayName === dayName);
+    if (!day) return null;
+    const val = day.draws[slot];
+    if (val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY") {
+      const parts = week.startDate.split(" ");
+      const monthMap = {"Jan":0,"Feb":1,"Mar":2,"Apr":3,"May":4,"Jun":5,"Jul":6,"Aug":7,"Sep":8,"Oct":9,"Nov":10,"Dec":11};
+      const startDate = new Date(parts[2], monthMap[parts[1]], parseInt(parts[0]));
+      const dayIndex = dayNames.indexOf(dayName);
+      const drawDate = new Date(startDate);
+      drawDate.setDate(startDate.getDate() + dayIndex);
+      return { value: parseInt(val, 10), date: drawDate, slot: slot };
+    }
+    return null;
+  }
+
+  // ====================================
+  // CHECK IF DAY IS HOLIDAY
+  // ====================================
+  function isHolidayDay(week, dayName) {
+    if (!week) return true;
+    const day = week.days.find(d => d.dayName === dayName);
+    if (!day) return true;
+    return slots.every(slot => {
+      const val = day.draws[slot];
+      return !val || val === "-" || val === "PENDING" || val === "HOLIDAY";
+    });
+  }
+
+  // ====================================
+  // COLLECT HISTORICAL WEEKEND DRAWS
+  // ====================================
+  function collectHistoricalWeekendDraws() {
+    const weekendDraws = [];
+    
+    for (const week of historicalWeeks) {
+      for (const dayName of weekendDays) {
+        if (isHolidayDay(week, dayName)) continue;
+        for (const slot of slots) {
+          const draw = getDraw(week, dayName, slot);
+          if (draw) {
+            weekendDraws.push({
+              num: draw,
+              day: dayName,
+              slot: slot,
+              weekStart: week.startDate
+            });
+          }
+        }
+      }
+    }
+    
+    return weekendDraws;
+  }
+
+  // ====================================
+  // GET ALL PLAYED NUMBERS FOR EACH DAY (UPPER SECTION)
+  // ====================================
+  function getAllPlayedForDay(targetDay, weekendDraws) {
+    const dayDraws = weekendDraws.filter(d => d.day === targetDay);
+    const counts = {};
+    for (let i = 1; i <= 36; i++) counts[i] = 0;
+    dayDraws.forEach(d => counts[d.num] = (counts[d.num] || 0) + 1);
+    
+    // Return ALL numbers that have been played (count > 0), sorted by count
+    return Object.entries(counts)
+      .filter(([num, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => ({
+        num: parseInt(entry[0]),
+        count: entry[1],
+        emoji: spiritEmoji[entry[0]] || '',
+        spirit: spiritNames[entry[0]] || 'Unknown'
+      }));
+  }
+
+  // ====================================
+  // GET CURRENT WEEK DRAWS FOR SPECIFIC DAY/SLOT
+  // ====================================
+  function getCurrentWeekDraw(dayName, slot) {
+    return getDraw(currentWeek, dayName, slot);
+  }
+
+  // ====================================
+  // GENERATE TOP 4 PICKS PER DRAW SLOT
+  // ====================================
+  function generatePicksForSlots(weekendDraws) {
+    const picks = {};
+    
+    for (const day of weekendDays) {
+      const dayDraws = weekendDraws.filter(d => d.day === day);
+      const slotPicks = {};
+      
+      for (const slot of slots) {
+        const slotDraws = dayDraws.filter(d => d.slot === slot);
+        const slotCounts = {};
+        for (let i = 1; i <= 36; i++) slotCounts[i] = 0;
+        slotDraws.forEach(d => slotCounts[d.num] = (slotCounts[d.num] || 0) + 1);
+        
+        const sorted = Object.entries(slotCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(entry => ({
+            num: parseInt(entry[0]),
+            count: entry[1],
+            emoji: spiritEmoji[entry[0]] || '',
+            spirit: spiritNames[entry[0]] || 'Unknown'
+          }));
+        
+        slotPicks[slot] = sorted;
+      }
+      
+      picks[day] = slotPicks;
+    }
+    
+    return picks;
+  }
+
+  // ====================================
+  // CHECK IF A PICK MATCHED THE ACTUAL DRAW
+  // ====================================
+  function checkMatch(pickNum, actualDraw) {
+    if (!actualDraw) return null;
+    return pickNum === actualDraw;
+  }
+
+  // ====================================
+  // BUILD THE CONTAINER HTML
+  // ====================================
+  
+  const showContainer = shouldShowContainer();
+  
+  const weekendDraws = collectHistoricalWeekendDraws();
+  const currentWeekendDraws = [];
+  
+  for (const day of weekendDays) {
+    if (isHolidayDay(currentWeek, day)) continue;
+    const dayIdx = dayNames.indexOf(day);
+    if (dayIdx <= todayIdx) {
+      for (const slot of slots) {
+        const draw = getDraw(currentWeek, day, slot);
+        if (draw) {
+          currentWeekendDraws.push({ num: draw, day: day, slot: slot });
+        }
+      }
+    }
+  }
+  
+  // Get ALL played numbers for each day (upper section)
+  const allPlayedFriday = getAllPlayedForDay("Friday", weekendDraws);
+  const allPlayedSaturday = getAllPlayedForDay("Saturday", weekendDraws);
+  const allPlayedSunday = getAllPlayedForDay("Sunday", weekendDraws);
+  
+  const slotPicks = generatePicksForSlots(weekendDraws);
+  
+  if (weekendDraws.length === 0) {
+    return `<div style="background: #ffffff; border-radius: 12px; padding: 20px; border: 1px solid #dddddd; text-align:center; color:#999;">📊 No weekend data available</div>`;
+  }
+
+  // Determine which day to show first in carousel (today if weekend, else Friday)
+  let defaultDayIndex = 0;
+  if (weekendDays.includes(todayName)) {
+    defaultDayIndex = weekendDays.indexOf(todayName);
+  }
+  
+  // Generate carousel HTML
+  let carouselSlides = '';
+  for (let d = 0; d < weekendDays.length; d++) {
+    const day = weekendDays[d];
+    const isActive = d === defaultDayIndex;
+    const dayPicks = slotPicks[day] || {};
+    
+    carouselSlides += `
+      <div class="weekend-carousel-slide" style="min-width: 100%; scroll-snap-align: start; padding: 0 4px; ${!isActive ? 'display: none;' : ''}" data-day="${day}">
+        <div style="background: ${isActive ? 'rgba(255,157,0,0.05)' : 'rgba(255,255,255,0.02)'}; border-radius: 8px; padding: 6px; border: ${isActive ? '2px solid #ff9d00' : '1px solid #e0e0e0'}; margin-bottom: 6px;">
+          <div style="text-align: center; font-size: 11px; font-weight: 700; color: ${isActive ? '#ff9d00' : '#666'}; margin-bottom: 4px;">
+            ${day.toUpperCase()} ${isActive ? '🔥 TODAY' : ''}
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
+    `;
+
+    for (const slot of slots) {
+      const picks = dayPicks[slot] || [];
+      const actualDraw = getCurrentWeekDraw(day, slot);
+      
+      carouselSlides += `
+        <div style="background: #f8f8f8; border-radius: 6px; padding: 4px; border: 1px solid #e8e8e8;">
+          <div style="text-align: center; font-size: 8px; font-weight: 700; color: #888; margin-bottom: 2px;">${slot}</div>
+      `;
+
+      for (let i = 0; i < 4; i++) {
+        if (i < picks.length) {
+          const pick = picks[i];
+          const matched = checkMatch(pick.num, actualDraw);
+          let bgColor = '#f8f8f8';
+          let borderColor = '#e8e8e8';
+          let textColor = '#000';
+          let statusLabel = '';
+          
+          if (matched === true) {
+            bgColor = '#d4edda';
+            borderColor = '#28a745';
+            textColor = '#155724';
+            statusLabel = '✅';
+          } else if (matched === false) {
+            bgColor = '#f5f5f5';
+            borderColor = '#cccccc';
+            textColor = '#999';
+            statusLabel = '❌';
+          } else {
+            bgColor = '#f8f8f8';
+            borderColor = '#e8e8e8';
+            textColor = '#888';
+            statusLabel = '⏳';
+          }
+          
+          carouselSlides += `
+            <div style="background: ${bgColor}; border-radius: 3px; padding: 1px 2px; border: 1px solid ${borderColor}; text-align: center; margin-bottom: 1px;">
+              <div style="display: flex; align-items: center; justify-content: center; gap: 2px;">
+                <span style="font-size: 11px; font-weight: 800; color: ${textColor};">${pick.num}</span>
+                <span style="font-size: 8px;">${pick.emoji}</span>
+                <span style="font-size: 7px; color: ${textColor};">${statusLabel}</span>
+              </div>
+              <div style="font-size: 6px; color: #999;">${pick.spirit.substring(0, 6)}</div>
+            </div>
+          `;
+        } else {
+          carouselSlides += `
+            <div style="background: #f5f5f5; border-radius: 3px; padding: 1px 2px; border: 1px dashed #dddddd; text-align: center; color: #ccc; font-size: 10px;">
+              —
+            </div>
+          `;
+        }
+      }
+
+      carouselSlides += `
+          <div style="text-align: center; font-size: 7px; color: #666; margin-top: 2px; padding-top: 2px; border-top: 1px solid #e8e8e8;">
+            <span style="font-weight: 700;">DRAW:</span> ${actualDraw ? `#${actualDraw}${spiritEmoji[actualDraw] || ''}` : '⏳ Pending'}
+          </div>
+        </div>
+      `;
+    }
+
+    carouselSlides += `
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Build HTML
+  let html = `
+    <div style="background: #ffffff; border-radius: 12px; padding: 12px; border: 1px solid #dddddd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 10px;">
+      
+      <!-- HEADER -->
+      <div style="text-align: center; margin-bottom: 10px;">
+        <div style="font-size: 16px; font-weight: 900; color: #000; letter-spacing: 0.5px;">🏆 WHEWHE PICKS EVERY FRI-SAT-SUN 🏆</div>
+        <div style="font-size: 9px; color: #666; margin-top: 2px;">All played numbers + Top 4 picks per draw • ${weekendDraws.length} historical draws</div>
+        <div style="font-size: 8px; color: #999; margin-top: 2px;">${showContainer ? '🟢 Active - Thursday EVE to Sunday' : '⏳ Available from Thursday EVE'}</div>
+      </div>
+  `;
+
+  if (!showContainer) {
+    html += `
+      <div style="text-align: center; padding: 20px; background: #f8f8f8; border-radius: 8px; border: 1px dashed #dddddd;">
+        <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+        <div style="font-size: 14px; font-weight: 700; color: #666;">Will Be Available Shortly</div>
+        <div style="font-size: 10px; color: #999; margin-top: 4px;">Container activates from Thursday Evening (6pm) through Sunday</div>
+      </div>
+    `;
+  } else {
+ // ====================================
+// TOP SECTION: ALL Played Numbers 
+// ====================================
+    html += `
+      <!-- ALL PLAYED NUMBERS -->
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 11px; font-weight: 800; color: #000; text-align: center; margin-bottom: 6px; background: #f0f0f0; padding: 4px; border-radius: 4px;">
+          📊 ALL PLAYED WEEKEND NUMBERS
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+    `;
+
+    const allPlayedData = [
+      { day: "Friday", data: allPlayedFriday, emoji: "🌅" },
+      { day: "Saturday", data: allPlayedSaturday, emoji: "🌤️" },
+      { day: "Sunday", data: allPlayedSunday, emoji: "🌙" }
+    ];
+
+    for (const data of allPlayedData) {
+      const isToday = data.day === todayName;
+      html += `
+        <div style="background: ${isToday ? 'rgba(255,157,0,0.08)' : 'rgba(255,255,255,0.03)'}; border-radius: 8px; padding: 6px; border: ${isToday ? '2px solid #ff9d00' : '1px solid #e0e0e0'};">
+          <div style="text-align: center; font-size: 10px; font-weight: 700; color: ${isToday ? '#ff9d00' : '#666'}; margin-bottom: 4px;">
+            ${data.emoji} ${data.day.toUpperCase()} ${isToday ? '🔥' : ''}
+            <span style="font-size: 7px; color: #999; display: block;">${data.data.length} numbers played</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-height: 120px; overflow-y: auto;">
+      `;
+      
+      for (const item of data.data) {
+        const hitColor = item.count >= 5 ? '#28a745' : (item.count >= 3 ? '#ff9d00' : '#666');
+        html += `
+          <div style="background: #f8f8f8; border-radius: 4px; padding: 2px 4px; text-align: center; border: 1px solid #e8e8e8; display: inline-flex; align-items: center; gap: 2px;">
+            <span style="font-size: 12px; font-weight: 800; color: #000;">${item.num}</span>
+            <span style="font-size: 7px;">${item.emoji}</span>
+            <span style="font-size: 7px; color: ${hitColor}; font-weight: 700;">${item.count}x</span>
+          </div>
+        `;
+      }
+      
+      html += `
+          </div>
+        </div>
+      `;
+    }
+
+    html += `
+        </div>
+      </div>
+    `;
+
+    // ====================================
+    // SOLID BLACK LINE - SEPARATOR
+    // ====================================
+    html += `
+      <hr style="border: none; border-top: 3px solid #000000; margin: 8px 0;">
+    `;
+
+    // ====================================
+    // BOTTOM SECTION: Scrollable Carousel
+    // ====================================
+    html += `
+      <div style="margin-top: 8px;">
+        <div style="font-size: 11px; font-weight: 800; color: #000; text-align: center; margin-bottom: 6px; background: #f0f0f0; padding: 4px; border-radius: 4px;">
+          🎯 TOP 4 PICKS PER DRAW - COMPARE WITH ACTUAL
+        </div>
+        <div style="font-size: 8px; color: #666; text-align: center; margin-bottom: 8px;">
+          🟢 = Match • ⚪ = Not Played Yet • ⚫ = No Match • <span style="color: #ff9d00; font-weight: 700;">← Swipe →</span>
+        </div>
+        
+        <!-- Carousel Container -->
+        <div style="position: relative; overflow: hidden;">
+          <div id="weekendCarousel" style="display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; -webkit-overflow-scrolling: touch; gap: 8px; padding: 4px 0; scrollbar-width: none;">
+            ${carouselSlides}
+          </div>
+          
+          <!-- Carousel Dots -->
+          <div style="display: flex; justify-content: center; gap: 6px; margin-top: 8px;">
+            ${weekendDays.map((day, idx) => `
+              <span class="carousel-dot" data-index="${idx}" onclick="goToWeekendSlide(${idx})" style="width: 10px; height: 10px; background: ${idx === defaultDayIndex ? '#ff9d00' : '#ccc'}; border-radius: 50%; cursor: pointer; display: inline-block; transition: all 0.3s ease;"></span>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // ====================================
+    // CAROUSEL JAVASCRIPT
+    // ====================================
+    html += `
+      <script>
+        (function() {
+          const carousel = document.getElementById('weekendCarousel');
+          if (!carousel) return;
+          
+          const slides = carousel.querySelectorAll('.weekend-carousel-slide');
+          const dots = document.querySelectorAll('.carousel-dot');
+          let currentIndex = ${defaultDayIndex};
+          let totalSlides = slides.length;
+          
+          // Show only the active slide initially
+          function updateSlides(index) {
+            slides.forEach((slide, i) => {
+              if (i === index) {
+                slide.style.display = 'block';
+              } else {
+                slide.style.display = 'none';
+              }
+            });
+            
+            dots.forEach((dot, i) => {
+              if (i === index) {
+                dot.style.background = '#ff9d00';
+              } else {
+                dot.style.background = '#ccc';
+              }
+            });
+            
+            currentIndex = index;
+          }
+          
+          // Expose scroll function globally
+          window.scrollWeekendCarousel = function(direction) {
+            let newIndex = currentIndex + direction;
+            if (newIndex < 0) newIndex = totalSlides - 1;
+            if (newIndex >= totalSlides) newIndex = 0;
+            updateSlides(newIndex);
+          };
+          
+          window.goToWeekendSlide = function(index) {
+            if (index >= 0 && index < totalSlides) {
+              updateSlides(index);
+            }
+          };
+          
+          // Handle swipe/touch events
+          let startX = 0;
+          let isDragging = false;
+          
+          carousel.addEventListener('touchstart', function(e) {
+            startX = e.touches[0].clientX;
+            isDragging = true;
+          });
+          
+          carousel.addEventListener('touchmove', function(e) {
+            if (!isDragging) return;
+            const diff = startX - e.touches[0].clientX;
+            if (Math.abs(diff) > 50) {
+              isDragging = false;
+              if (diff > 0) {
+                window.scrollWeekendCarousel(1);
+              } else {
+                window.scrollWeekendCarousel(-1);
+              }
+            }
+          });
+          
+          carousel.addEventListener('touchend', function() {
+            isDragging = false;
+          });
+          
+          // Initialize
+          updateSlides(${defaultDayIndex});
+        })();
+      </script>
+    `;
+
+    // ====================================
+    // LEGEND
+    // ====================================
+    html += `
+      <div style="display: flex; justify-content: center; gap: 12px; font-size: 7px; color: #666; padding: 4px; background: #f5f5f5; border-radius: 4px; flex-wrap: wrap; margin-top: 8px;">
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #d4edda; border: 1px solid #28a745; border-radius: 2px; vertical-align: middle;"></span> MATCH</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #f5f5f5; border: 1px solid #cccccc; border-radius: 2px; vertical-align: middle;"></span> NO MATCH</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #f8f8f8; border: 1px solid #e8e8e8; border-radius: 2px; vertical-align: middle;"></span> NOT PLAYED</span>
+        <span><span style="color: #ff9d00; font-weight: 900;">⬤</span> TODAY</span>
+        <span><span style="color: #28a745; font-weight: 900;">●</span> 5+ Hits</span>
+        <span><span style="color: #ff9d00; font-weight: 900;">●</span> 3-4 Hits</span>
+      </div>
+    `;
+  }
+
+  // ====================================
+  // FOOTER
+  // ====================================
+  html += `
+      <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #dddddd; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="font-size: 7px; color: #666;">⚡ WheWhe Weekend Picks • CodeWithGlasgow ©️ CWG Builds</span>
+        <span style="font-size: 6px; color: #999;">${weekendDraws.length} historical draws • Excludes holidays</span>
+      </div>
+    </div>
+  `;
+
+  return html;
+}
+
+///////////////////////////////////////////
 // =====================================
 // Missing Lines and Suits Chart (14 Days)
 // =====================================
@@ -1620,11 +2174,11 @@ function renderIntelligentAnalysis(weeks) {
 }
 //////////////////////////////////////////
 
-// =========================================
+// =====================================
 // WHEWHE MARK & ANALYSIS CONTAINER
 // Search marks, show analysis table with due status
 // AND highlight searched numbers on the chart using their own colors
-// =========================================
+// =====================================
 function renderWheWheMarkAnalysis(weeksData) {
     if (!weeksData || weeksData.length === 0) {
         return '<div style="background: #ffffff; border-radius: 10px; padding: 16px; border: 1px solid #dddddd; margin: 8px 0; text-align:center; color:#999;">📊 No data available for analysis</div>';
@@ -1950,10 +2504,11 @@ function renderWheWheMarkAnalysis(weeksData) {
     
     return html;
 }
+//////////////////////////////////////////
 
-// =========================================
+// ====================================
 // 3. FULL SCREEN CHART WITH STACKED LEAVING/MEETING
-// =========================================
+// ====================================
 function generateFullScreenChart(weeks, gameType, title) {
     const isPick2 = (gameType === "PIKII");
     const isPick4 = (gameType === "PIKIV");
@@ -2481,7 +3036,9 @@ function generateFullScreenChart(weeks, gameType, title) {
     <br>
     <div style="width:100%; height:2px; background:#000;"></div>
     
-      <br>
+  <br>
+  ${renderWheWheWeekendPicks(displayWeeks)}
+  <br>
       
   <!-- Missing Lines & Suites Container -->
     ${renderIntelligentAnalysis(displayWeeks)}
