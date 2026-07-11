@@ -2,7 +2,7 @@
 // NLCB CHARTS WIDGET - PLAY WHE CHART
 // Created By: CODEWITHGLASGOW or CWG
 // Build: Widget/Full-Screen Play Whe Chart
-// Version 5.4.4
+// Version 5.4.3
 // Last Modified: July 10 2026
 // ========================================
 
@@ -1220,8 +1220,8 @@ function renderWheWheWeekendPicks(weeksData) {
       }
 
       carouselSlides += `
-          <div style="text-align: center; font-size: 7px; color: #666; margin-top: 2px; padding-top: 2px; border-top: 1px solid #e8e8e8;">
-            <span style="font-weight: 700;">DRAW:</span> ${actualDraw ? `#${actualDraw}${spiritEmoji[actualDraw] || ''}` : '⏳ Pending'}
+          <div style="text-align: center; font-size: 12px; color: #000; margin-top: 2px; padding-top: 2px; border-top: 1px solid #e8e8e8;">
+            <span style="font-weight: 700;">DRAW:</span> <br>${actualDraw ? `${actualDraw}${spiritEmoji[actualDraw] || ''}` : '⏳ Pending'}
           </div>
         </div>
       `;
