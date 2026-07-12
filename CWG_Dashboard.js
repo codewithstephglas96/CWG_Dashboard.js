@@ -2,8 +2,8 @@
 // NLCB CHARTS WIDGET - PLAY WHE CHART
 // Created By: CODEWITHGLASGOW or CWG
 // Build: Widget/Full-Screen Play Whe Chart
-// Version 5.4.5
-// Last Modified: July 11 2026
+// Version 5.5.0
+// Last Modified: July 12 2026
 // ========================================
 
 const BRANDING = "CODEWITHGLASGOW";
@@ -14,6 +14,39 @@ const TICKER_URL = "https://script.google.com/macros/s/AKfycbymSUZ3cuBP7wZSKkxs8
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const timeOrder = ["MOR", "MID", "NON", "EVE"];
 const dayShort = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+// ====================================
+// HELPER FUNCTIONS FOR HOLIDAY HANDLING
+// ====================================
+function hasValidDrawsForDay(week, dayName) {
+    if (!week) return false;
+    const day = week.days.find(d => d.dayName === dayName);
+    if (!day) return false;
+    return timeOrder.some(slot => {
+        const val = day.draws[slot];
+        return val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY";
+    });
+}
+
+function isHolidayDay(week, dayName) {
+    if (!week) return true;
+    const day = week.days.find(d => d.dayName === dayName);
+    if (!day) return true;
+    const hasValid = timeOrder.some(slot => {
+        const val = day.draws[slot];
+        return val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY";
+    });
+    if (hasValid) return false;
+    // Check if EVE has passed (meaning the day is complete without draws)
+    const parts = week.startDate.split(" ");
+    const monthMap = {"Jan":0,"Feb":1,"Mar":2,"Apr":3,"May":4,"Jun":5,"Jul":6,"Aug":7,"Sep":8,"Oct":9,"Nov":10,"Dec":11};
+    const startDate = new Date(parts[2], monthMap[parts[1]], parseInt(parts[0]));
+    const dayIndex = daysOfWeek.indexOf(dayName);
+    const drawDate = new Date(startDate);
+    drawDate.setDate(startDate.getDate() + dayIndex);
+    drawDate.setHours(18, 0, 0, 0); // EVE time
+    return drawDate < new Date();
+}
 
 // ====================================
 // 1/16 CHART - From Play Whe Book PDF
@@ -1262,7 +1295,7 @@ function renderWheWheWeekendPicks(weeksData) {
   }
 
   // ====================================
-  // GET LEAVING AND MEETING NUMBERS
+  // GET LEAVING AND MEETING NUMBERS - ENHANCED WITH MULTI-WEEK SEARCH
   // ====================================
   function getLeavingMeeting() {
     let leavingNumber = null;
@@ -1272,7 +1305,7 @@ function renderWheWheWeekendPicks(weeksData) {
     let leavingDayIdx = -1;
     let leavingSlotIdx = -1;
     
-    // Find leaving number (most recent draw in current week)
+    // STEP 1: Find LEAVING number - Search current week first
     for (let d = todayIdx; d >= 0; d--) {
       for (let s = slots.length - 1; s >= 0; s--) {
         const draw = getDraw(currentWeek, dayNames[d], slots[s]);
@@ -1290,7 +1323,38 @@ function renderWheWheWeekendPicks(weeksData) {
       if (leavingNumber) break;
     }
     
-    // Find meeting number (next slot after leaving from previous week)
+    // STEP 2: If no leaving number in current week, search all previous weeks
+    if (!leavingNumber) {
+      const sortedWeeksLocal = [...weeksData].sort((a, b) => {
+        let pa = a.startDate.split(" ");
+        let pb = b.startDate.split(" ");
+        return new Date(pa[2] + "-" + pa[1] + "-" + pa[0]) - new Date(pb[2] + "-" + pb[1] + "-" + pb[0]);
+      });
+      
+      // Start from the most recent previous week
+      for (let w = sortedWeeksLocal.length - 2; w >= 0; w--) {
+        const week = sortedWeeksLocal[w];
+        for (let d = dayNames.length - 1; d >= 0; d--) {
+          for (let s = slots.length - 1; s >= 0; s--) {
+            const draw = getDraw(week, dayNames[d], slots[s]);
+            if (draw) {
+              leavingNumber = draw;
+              leavingDay = dayNames[d];
+              leavingSlot = slots[s];
+              leavingDayIdx = d;
+              leavingSlotIdx = s;
+              const result = getDrawWithDate(week, dayNames[d], slots[s]);
+              if (result) leavingDate = result.date;
+              break;
+            }
+          }
+          if (leavingNumber) break;
+        }
+        if (leavingNumber) break;
+      }
+    }
+    
+    // STEP 3: Find MEETING number (next slot after leaving)
     let meetingNumber = null;
     let meetingSlot = null;
     let meetingDay = null;
@@ -1300,28 +1364,54 @@ function renderWheWheWeekendPicks(weeksData) {
       let nextDayIdx = leavingDayIdx;
       let nextSlotIdx = leavingSlotIdx + 1;
       
+      // Handle slot overflow to next day
       if (nextSlotIdx >= slots.length) {
         nextSlotIdx = 0;
         nextDayIdx = leavingDayIdx + 1;
       }
       
+      // Handle day overflow to next week (wrap to Sunday)
       if (nextDayIdx >= dayNames.length) {
         nextDayIdx = 0;
       }
       
-      if (nextDayIdx < dayNames.length && nextDayIdx >= 0) {
+      if (nextDayIdx >= 0 && nextDayIdx < dayNames.length) {
         const targetDay = dayNames[nextDayIdx];
         const targetSlot = slots[nextSlotIdx];
         
-        // First try previous week
+        // FIRST: Try previous week (preferred source)
         meetingNumber = getDraw(previousWeek, targetDay, targetSlot);
         if (meetingNumber) {
           meetingDay = targetDay;
           meetingSlot = targetSlot;
           const result = getDrawWithDate(previousWeek, targetDay, targetSlot);
           if (result) meetingDate = result.date;
-        } else {
-          // Try current week as fallback
+        }
+        
+        // SECOND: If not found in previous week, search backwards through weeks
+        if (!meetingNumber) {
+          const sortedWeeksLocal = [...weeksData].sort((a, b) => {
+            let pa = a.startDate.split(" ");
+            let pb = b.startDate.split(" ");
+            return new Date(pa[2] + "-" + pa[1] + "-" + pa[0]) - new Date(pb[2] + "-" + pb[1] + "-" + pb[0]);
+          });
+          
+          for (let w = sortedWeeksLocal.length - 2; w >= 0; w--) {
+            const week = sortedWeeksLocal[w];
+            const draw = getDraw(week, targetDay, targetSlot);
+            if (draw) {
+              meetingNumber = draw;
+              meetingDay = targetDay;
+              meetingSlot = targetSlot;
+              const result = getDrawWithDate(week, targetDay, targetSlot);
+              if (result) meetingDate = result.date;
+              break;
+            }
+          }
+        }
+        
+        // THIRD: If still not found, try current week as absolute fallback
+        if (!meetingNumber) {
           const draw = getDraw(currentWeek, targetDay, targetSlot);
           if (draw) {
             meetingNumber = draw;
@@ -1406,6 +1496,10 @@ function renderWheWheWeekendPicks(weeksData) {
     const dayUnderData = underToday[day] || {};
     const isToday = day === todayName;
     
+    // Format leaving and meeting display with fallbacks
+    const leavingDisplay = leavingMeeting.leavingNumber ? `#${leavingMeeting.leavingNumber}${spiritEmoji[leavingMeeting.leavingNumber] || ''}` : '—';
+    const meetingDisplay = leavingMeeting.meetingNumber ? `#${leavingMeeting.meetingNumber}${spiritEmoji[leavingMeeting.meetingNumber] || ''}` : '—';
+    
     carouselSlides += `
       <div class="weekend-carousel-slide" style="min-width: 100%; scroll-snap-align: start; padding: 0 4px; ${!isActive ? 'display: none;' : ''}" data-day="${day}">
         <div style="background: ${isActive ? 'rgba(255,157,0,0.05)' : 'rgba(255,255,255,0.02)'}; border-radius: 8px; padding: 6px; border: ${isActive ? '2px solid #ff9d00' : '1px solid #e0e0e0'}; margin-bottom: 6px;">
@@ -1432,16 +1526,16 @@ function renderWheWheWeekendPicks(weeksData) {
             </div>
           </div>
           
-  <!-- LEAVING & MEETING INSIDE Carousel -->
-    <div style="display: flex; justify-content: center; gap: 16px; padding: 4px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 6px;">
-   <div style="display: flex; align-items: center; gap: 4px;">
+          <!-- LEAVING & MEETING INSIDE Carousel -->
+          <div style="display: flex; justify-content: center; gap: 16px; padding: 4px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 4px;">
               <span style="color: #58a6ff; font-weight: 800; font-size: 10px;">🔵 LEAVING</span>
-              <span style="font-size: 14px; font-weight: 900; color: #000;">${leavingMeeting.leavingNumber ? `#${leavingMeeting.leavingNumber}${spiritEmoji[leavingMeeting.leavingNumber] || ''}` : '—'}</span>
+              <span style="font-size: 14px; font-weight: 900; color: #000;">${leavingDisplay}</span>
               <span style="font-size: 7px; color: #888;">${leavingMeeting.leavingSlot || ''}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <span style="color: #ff9d00; font-weight: 800; font-size: 10px;">🟡 MEETING</span>
-              <span style="font-size: 14px; font-weight: 900; color: #000;">${leavingMeeting.meetingNumber ? `#${leavingMeeting.meetingNumber}${spiritEmoji[leavingMeeting.meetingNumber] || ''}` : '—'}</span>
+              <span style="font-size: 14px; font-weight: 900; color: #000;">${meetingDisplay}</span>
               <span style="font-size: 7px; color: #888;">${leavingMeeting.meetingSlot || ''}</span>
             </div>
           </div>
@@ -2839,7 +2933,7 @@ function renderWheWheMarkAnalysis(weeksData) {
 //////////////////////////////////////////
 
 // ====================================
-// 3. FULL SCREEN CHART WITH STACKED LEAVING/MEETING
+// 3. FULL SCREEN CHART WITH STACKED LEAVING/MEETING - ENHANCED
 // ====================================
 function generateFullScreenChart(weeks, gameType, title) {
     const isPick2 = (gameType === "PIKII");
@@ -2849,7 +2943,7 @@ function generateFullScreenChart(weeks, gameType, title) {
     // Get last 41 weeks
     const displayWeeks = weeks.slice(-41);
     
-    // ===== LEAVING & MEETING LOGIC ======
+    // ===== LEAVING & MEETING LOGIC - ENHANCED WITH MULTI-WEEK SEARCH ======
     let leavingNumber = null;
     let leavingSlot = null;
     let leavingDay = null;
@@ -2861,9 +2955,42 @@ function generateFullScreenChart(weeks, gameType, title) {
     let activeHighlights = [];
     
     if (isPlayWhe && displayWeeks.length > 0) {
-        const sortedWeeks = displayWeeks;
+        const sortedWeeks = [...displayWeeks].sort((a, b) => {
+            let pa = a.startDate.split(" ");
+            let pb = b.startDate.split(" ");
+            return new Date(pa[2] + "-" + pa[1] + "-" + pa[0]) - new Date(pb[2] + "-" + pb[1] + "-" + pb[0]);
+        });
+        
         const currentWeek = sortedWeeks[sortedWeeks.length - 1];
-        const previousWeek = sortedWeeks.length >= 2 ? sortedWeeks[sortedWeeks.length - 2] : currentWeek;
+        
+        // Find the most recent non-holiday previous week with valid draws
+        let previousWeek = null;
+        for (let i = sortedWeeks.length - 2; i >= 0; i--) {
+            const week = sortedWeeks[i];
+            let hasValidDraw = false;
+            if (week && week.days) {
+                for (const day of week.days) {
+                    if (day && day.draws) {
+                        for (const slot of timeOrder) {
+                            const val = day.draws[slot];
+                            if (val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY") {
+                                hasValidDraw = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasValidDraw) break;
+                }
+            }
+            if (hasValidDraw) {
+                previousWeek = week;
+                break;
+            }
+        }
+        
+        if (!previousWeek) {
+            previousWeek = currentWeek;
+        }
         
         const now = new Date();
         const todayIdx = now.getDay();
@@ -2873,7 +3000,7 @@ function generateFullScreenChart(weeks, gameType, title) {
             const day = week.days.find(d => d.dayName === dayName);
             if (!day) return null;
             const val = day.draws[slot];
-            return val && val !== "-" && val !== "PENDING" ? parseInt(val, 10) : null;
+            return val && val !== "-" && val !== "PENDING" && val !== "HOLIDAY" ? parseInt(val, 10) : null;
         }
         
         function getDateForDraw(week, dayName) {
@@ -2888,7 +3015,7 @@ function generateFullScreenChart(weeks, gameType, title) {
             return drawDate;
         }
         
-        // Find LEAVING number (last played in current week)
+        // STEP 1: Find LEAVING number - Search current week first
         let leavingDayIdx = -1;
         let leavingSlotIdx = -1;
         
@@ -2908,7 +3035,30 @@ function generateFullScreenChart(weeks, gameType, title) {
             if (leavingNumber) break;
         }
         
-        // Find MEETING number
+        // STEP 2: If no leaving number in current week, search all previous weeks
+        if (!leavingNumber) {
+            for (let w = sortedWeeks.length - 2; w >= 0; w--) {
+                const week = sortedWeeks[w];
+                for (let d = daysOfWeek.length - 1; d >= 0; d--) {
+                    for (let s = timeOrder.length - 1; s >= 0; s--) {
+                        const draw = getDraw(week, daysOfWeek[d], timeOrder[s]);
+                        if (draw) {
+                            leavingNumber = draw;
+                            leavingDayIdx = d;
+                            leavingSlotIdx = s;
+                            leavingSlot = timeOrder[s];
+                            leavingDay = daysOfWeek[d];
+                            leavingDate = getDateForDraw(week, daysOfWeek[d]);
+                            break;
+                        }
+                    }
+                    if (leavingNumber) break;
+                }
+                if (leavingNumber) break;
+            }
+        }
+        
+        // STEP 3: Find MEETING number (next slot after leaving)
         if (leavingDayIdx !== -1 && leavingSlotIdx !== -1) {
             let nextDayIdx = leavingDayIdx;
             let nextSlotIdx = leavingSlotIdx + 1;
@@ -2922,12 +3072,42 @@ function generateFullScreenChart(weeks, gameType, title) {
                 nextDayIdx = 0;
             }
             
-            if (nextDayIdx < daysOfWeek.length) {
-                meetingNumber = getDraw(previousWeek, daysOfWeek[nextDayIdx], timeOrder[nextSlotIdx]);
+            if (nextDayIdx >= 0 && nextDayIdx < daysOfWeek.length) {
+                const targetDay = daysOfWeek[nextDayIdx];
+                const targetSlot = timeOrder[nextSlotIdx];
+                
+                // FIRST: Try previous week (preferred source)
+                meetingNumber = getDraw(previousWeek, targetDay, targetSlot);
                 if (meetingNumber) {
-                    meetingSlot = timeOrder[nextSlotIdx];
-                    meetingDay = daysOfWeek[nextDayIdx];
-                    meetingDate = getDateForDraw(previousWeek, daysOfWeek[nextDayIdx]);
+                    meetingSlot = targetSlot;
+                    meetingDay = targetDay;
+                    meetingDate = getDateForDraw(previousWeek, targetDay);
+                }
+                
+                // SECOND: If not found in previous week, search backwards through weeks
+                if (!meetingNumber) {
+                    for (let w = sortedWeeks.length - 2; w >= 0; w--) {
+                        const week = sortedWeeks[w];
+                        const draw = getDraw(week, targetDay, targetSlot);
+                        if (draw) {
+                            meetingNumber = draw;
+                            meetingSlot = targetSlot;
+                            meetingDay = targetDay;
+                            meetingDate = getDateForDraw(week, targetDay);
+                            break;
+                        }
+                    }
+                }
+                
+                // THIRD: If still not found, try current week as absolute fallback
+                if (!meetingNumber) {
+                    const draw = getDraw(currentWeek, targetDay, targetSlot);
+                    if (draw) {
+                        meetingNumber = draw;
+                        meetingSlot = targetSlot;
+                        meetingDay = targetDay;
+                        meetingDate = getDateForDraw(currentWeek, targetDay);
+                    }
                 }
             }
         }
@@ -2996,20 +3176,25 @@ function generateFullScreenChart(weeks, gameType, title) {
         return val;
     }
     
-    // Format leaving and meeting info for stacked display
-    let leavingDisplay = "";
-    let meetingDisplay = "";
-    let leavingDateDisplay = "";
-    let meetingDateDisplay = "";
+    // Format leaving and meeting info for stacked display with fallbacks
+    let leavingDisplay = "—";
+    let meetingDisplay = "—";
+    let leavingDateDisplay = "No data available";
+    let meetingDateDisplay = "No data available";
+    let leavingSlotDisplay = "";
+    let meetingSlotDisplay = "";
     
     if (isPlayWhe) {
         if (leavingNumber) {
             leavingDisplay = `#${leavingNumber}`;
-            leavingDateDisplay = leavingDate ? formatDateDisplay(leavingDate) : "";
+            leavingDateDisplay = leavingDate ? formatDateDisplay(leavingDate) : "—";
+            leavingSlotDisplay = leavingSlot || "";
         }
+        
         if (meetingNumber) {
             meetingDisplay = `#${meetingNumber}`;
-            meetingDateDisplay = meetingDate ? formatDateDisplay(meetingDate) : "";
+            meetingDateDisplay = meetingDate ? formatDateDisplay(meetingDate) : "—";
+            meetingSlotDisplay = meetingSlot || "";
         }
     }
     
@@ -3251,18 +3436,18 @@ function generateFullScreenChart(weeks, gameType, title) {
                 <h1>${title} CHART • ${todayDateDisplay}</h1>
             </div>
             
-            <!-- Stacked Leaving/Meeting Boxes -->
+            <!-- Stacked Leaving/Meeting Boxes with Enhanced Display -->
             ${isPlayWhe ? `
             <div class="lm-container">
                 <div class="lm-box leaving">
-                    <div class="label">LEAVING • ${leavingSlot ? leavingSlot : ''}</div>
-                    <div class="number">${leavingDisplay || '—'}</div>
-                    <div class="date">${leavingDateDisplay || ''}</div>
+                    <div class="label">LEAVING • ${leavingSlotDisplay}</div>
+                    <div class="number">${leavingDisplay}</div>
+                    <div class="date">${leavingDateDisplay}</div>
                 </div>
                 <div class="lm-box meeting">
-                    <div class="label"> MEETING • ${meetingSlot ? meetingSlot : ''}</div>
-                    <div class="number">${meetingDisplay || '—'}</div>
-                    <div class="date">${meetingDateDisplay || ''}</div>
+                    <div class="label">MEETING • ${meetingSlotDisplay}</div>
+                    <div class="number">${meetingDisplay}</div>
+                    <div class="date">${meetingDateDisplay}</div>
                 </div>
             </div>
             ` : `
