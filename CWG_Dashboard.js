@@ -2,7 +2,7 @@
 // NLCB CHARTS WIDGET - PLAY WHE CHART
 // Created By: CODEWITHGLASGOW or CWG
 // Build: Widget/Full-Screen Play Whe Chart
-// Version 5.4.4
+// Version 5.4.5
 // Last Modified: July 11 2026
 // ========================================
 
@@ -14,6 +14,40 @@ const TICKER_URL = "https://script.google.com/macros/s/AKfycbymSUZ3cuBP7wZSKkxs8
 const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const timeOrder = ["MOR", "MID", "NON", "EVE"];
 const dayShort = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+// ====================================
+// 1/16 CHART - From Play Whe Book PDF
+// Each number has 2 followers
+// Format: { main: [follower1, follower2] }
+// ====================================
+const CHART_1_16 = {
+  1: [16, 29], 2: [17, 30], 3: [18, 31], 4: [19, 32],
+  5: [20, 33], 6: [21, 34], 7: [22, 35], 8: [23, 36],
+  9: [24, 1], 10: [25, 2], 11: [26, 3], 12: [27, 4],
+  13: [28, 5], 14: [29, 6], 15: [30, 7], 16: [31, 8],
+  17: [32, 9], 18: [33, 10], 19: [34, 11], 20: [35, 12],
+  21: [36, 13], 22: [1, 14], 23: [2, 15], 24: [3, 16],
+  25: [4, 17], 26: [5, 18], 27: [6, 19], 28: [7, 20],
+  29: [8, 21], 30: [9, 22], 31: [10, 23], 32: [11, 24],
+  33: [12, 25], 34: [13, 26], 35: [14, 27], 36: [15, 28]
+};
+
+// ====================================
+// 1/8 CHART - From Play Whe Book PDF
+// Each number has 2 followers
+// Format: { main: [follower1, follower2] }
+// ====================================
+const CHART_1_8 = {
+  1: [8, 25], 2: [9, 26], 3: [10, 27], 4: [11, 28],
+  5: [12, 29], 6: [13, 30], 7: [14, 31], 8: [15, 32],
+  9: [16, 33], 10: [17, 34], 11: [18, 35], 12: [19, 36],
+  13: [20, 1], 14: [21, 2], 15: [22, 3], 16: [23, 4],
+  17: [24, 5], 18: [25, 6], 19: [26, 7], 20: [27, 8],
+  21: [28, 9], 22: [29, 10], 23: [30, 11], 24: [31, 12],
+  25: [32, 13], 26: [33, 14], 27: [34, 15], 28: [35, 16],
+  29: [36, 17], 30: [1, 18], 31: [2, 19], 32: [3, 20],
+  33: [4, 21], 34: [5, 22], 35: [6, 23], 36: [7, 24]
+};
 
 // Check if running as widget
 if (config.runsInWidget) {
@@ -900,7 +934,8 @@ function renderPlayWheShelfContainer(marks, numberColors, intervals, hotMarks, o
 
 // =====================================
 // WHEWHE PICKS EVERY FRI-SAT-SUN - SMART CONTAINER
-// WITH LEAVING/MEETING LOGIC FOR TOP 4 PICKS
+// WITH "LOOK AHEAD" LOGIC
+// Picks are calculated once per day using previous week's patterns
 // ======================================
 function renderWheWheWeekendPicks(weeksData) {
   if (!weeksData || weeksData.length === 0) {
@@ -943,6 +978,7 @@ function renderWheWheWeekendPicks(weeksData) {
   });
 
   const currentWeek = sortedWeeks[sortedWeeks.length - 1];
+  const previousWeek = sortedWeeks.length >= 2 ? sortedWeeks[sortedWeeks.length - 2] : currentWeek;
   const historicalWeeks = sortedWeeks.slice(0, -1);
 
   const now = new Date();
@@ -1106,50 +1142,40 @@ function renderWheWheWeekendPicks(weeksData) {
   }
 
   // ====================================
-  // GENERATE TOP 4 PICKS PER DRAW SLOT WITH LEAVING/MEETING
+  // GENERATE TOP 4 PICKS PER DRAW SLOT - "LOOK AHEAD" VERSION
   // ====================================
   function generatePicksForSlots(weekendDraws) {
     const picks = {};
     
-    // Helper: Get Leaving number for a day
-    function getLeavingNumber(dayName) {
-      const dayIdx = dayNames.indexOf(dayName);
-      const prevDayIdx = (dayIdx - 1 + 7) % 7;
-      const prevDay = dayNames[prevDayIdx];
-      
-      let leaving = getDraw(currentWeek, prevDay, "EVE");
-      if (!leaving) {
-        for (let w = historicalWeeks.length - 1; w >= 0; w--) {
-          leaving = getDraw(historicalWeeks[w], prevDay, "EVE");
-          if (leaving) break;
-        }
-      }
-      return leaving;
+    // Helper: Get the "anchor" number from previous week for a given day/slot
+    function getAnchorNumber(targetDay, targetSlot) {
+      return getDraw(previousWeek, targetDay, targetSlot);
     }
     
-    // Helper: Get Meeting number for a day
-    function getMeetingNumber(dayName) {
-      let meeting = getDraw(currentWeek, dayName, "MOR");
-      if (!meeting) {
-        for (let w = historicalWeeks.length - 1; w >= 0; w--) {
-          meeting = getDraw(historicalWeeks[w], dayName, "MOR");
-          if (meeting) break;
-        }
-      }
-      return meeting;
+    // Helper: Get followers from 1/16 chart
+    function getChart16Followers(num) {
+      if (!num) return [];
+      return CHART_1_16[num] || [];
     }
     
-    // Helper: Find numbers that historically follow a leaving number
-    function getHistoricalFollowers(leavingNum, targetDay, targetSlot) {
+    // Helper: Get followers from 1/8 chart
+    function getChart8Followers(num) {
+      if (!num) return [];
+      return CHART_1_8[num] || [];
+    }
+    
+    // Helper: Find numbers that historically follow a given number in the same day/slot
+    function getHistoricalFollowersForSlot(anchorNum, targetDay, targetSlot) {
       const followers = {};
       for (let i = 1; i <= 36; i++) followers[i] = 0;
       
       for (const week of historicalWeeks) {
-        const prevDayIdx = (dayNames.indexOf(targetDay) - 1 + 7) % 7;
+        const targetIdx = dayNames.indexOf(targetDay);
+        const prevDayIdx = (targetIdx - 1 + 7) % 7;
         const prevDay = dayNames[prevDayIdx];
         
-        const leavingDraw = getDraw(week, prevDay, "EVE");
-        if (leavingDraw === leavingNum) {
+        const anchorDraw = getDraw(week, prevDay, "EVE");
+        if (anchorDraw === anchorNum) {
           const followDraw = getDraw(week, targetDay, targetSlot);
           if (followDraw) {
             followers[followDraw] = (followers[followDraw] || 0) + 1;
@@ -1164,10 +1190,12 @@ function renderWheWheWeekendPicks(weeksData) {
       const dayDraws = weekendDraws.filter(d => d.day === day);
       const slotPicks = {};
       
-      const leavingNum = getLeavingNumber(day);
-      const meetingNum = getMeetingNumber(day);
-      
       for (const slot of slots) {
+        const anchorNum = getAnchorNumber(day, slot);
+        const chart16Followers = getChart16Followers(anchorNum);
+        const chart8Followers = getChart8Followers(anchorNum);
+        const historicalFollowers = getHistoricalFollowersForSlot(anchorNum, day, slot);
+        
         const slotDraws = dayDraws.filter(d => d.slot === slot);
         const slotCounts = {};
         for (let i = 1; i <= 36; i++) slotCounts[i] = 0;
@@ -1177,34 +1205,26 @@ function renderWheWheWeekendPicks(weeksData) {
         for (let i = 1; i <= 36; i++) {
           let score = 0;
           
-          // 1. Historical frequency for this slot (30%)
-          const freqWeight = slotDraws.length > 0 ? (slotCounts[i] / slotDraws.length) * 30 : 0;
+          const freqWeight = slotDraws.length > 0 ? (slotCounts[i] / slotDraws.length) * 20 : 0;
           score += freqWeight;
           
-          // 2. Leaving/Meeting relationship (40%)
-          if (leavingNum) {
-            const followers = getHistoricalFollowers(leavingNum, day, slot);
-            const followCount = followers[i] || 0;
-            const totalFollowers = Object.values(followers).reduce((a, b) => a + b, 0);
-            const followWeight = totalFollowers > 0 ? (followCount / totalFollowers) * 25 : 0;
-            score += followWeight;
-          }
+          const followCount = historicalFollowers[i] || 0;
+          const totalFollowers = Object.values(historicalFollowers).reduce((a, b) => a + b, 0);
+          const followWeight = totalFollowers > 0 ? (followCount / totalFollowers) * 25 : 0;
+          score += followWeight;
           
-          // 3. Meeting number bonus
-          if (meetingNum && meetingNum === i) {
-            score += 15;
-          }
+          if (chart16Followers.includes(i)) score += 20;
+          if (chart8Followers.includes(i)) score += 15;
+          if (chart16Followers.includes(i) && chart8Followers.includes(i)) score += 5;
           
-          // 4. Recent performance (20%)
           const recentDraws = slotDraws.slice(-8 * 4);
           const recentCount = recentDraws.filter(d => d.num === i).length;
-          const recentWeight = recentDraws.length > 0 ? (recentCount / recentDraws.length) * 20 : 0;
+          const recentWeight = recentDraws.length > 0 ? (recentCount / recentDraws.length) * 10 : 0;
           score += recentWeight;
           
-          // 5. Day-specific bonus (10%)
           const dayTotal = dayDraws.length;
           const dayCount = dayDraws.filter(d => d.num === i).length;
-          const dayWeight = dayTotal > 0 ? (dayCount / dayTotal) * 10 : 0;
+          const dayWeight = dayTotal > 0 ? (dayCount / dayTotal) * 5 : 0;
           score += dayWeight;
           
           scored.push({
@@ -1212,7 +1232,8 @@ function renderWheWheWeekendPicks(weeksData) {
             score: Math.round(score),
             emoji: spiritEmoji[i] || '',
             spirit: spiritNames[i] || 'Unknown',
-            count: slotCounts[i] || 0
+            count: slotCounts[i] || 0,
+            anchorNum: anchorNum
           });
         }
         
@@ -1221,9 +1242,11 @@ function renderWheWheWeekendPicks(weeksData) {
       }
       
       picks[day] = {
-        leaving: leavingNum,
-        meeting: meetingNum,
-        slots: slotPicks
+        slots: slotPicks,
+        anchorNums: slots.reduce((acc, slot) => {
+          acc[slot] = getAnchorNumber(day, slot);
+          return acc;
+        }, {})
       };
     }
     
@@ -1236,6 +1259,98 @@ function renderWheWheWeekendPicks(weeksData) {
   function checkMatch(pickNum, actualDraw) {
     if (!actualDraw) return null;
     return pickNum === actualDraw;
+  }
+
+  // ====================================
+  // GET LEAVING AND MEETING NUMBERS
+  // ====================================
+  function getLeavingMeeting() {
+    let leavingNumber = null;
+    let leavingSlot = null;
+    let leavingDay = null;
+    let leavingDate = null;
+    let leavingDayIdx = -1;
+    let leavingSlotIdx = -1;
+    
+    // Find leaving number (most recent draw in current week)
+    for (let d = todayIdx; d >= 0; d--) {
+      for (let s = slots.length - 1; s >= 0; s--) {
+        const draw = getDraw(currentWeek, dayNames[d], slots[s]);
+        if (draw) {
+          leavingNumber = draw;
+          leavingDay = dayNames[d];
+          leavingSlot = slots[s];
+          leavingDayIdx = d;
+          leavingSlotIdx = s;
+          const result = getDrawWithDate(currentWeek, dayNames[d], slots[s]);
+          if (result) leavingDate = result.date;
+          break;
+        }
+      }
+      if (leavingNumber) break;
+    }
+    
+    // Find meeting number (next slot after leaving from previous week)
+    let meetingNumber = null;
+    let meetingSlot = null;
+    let meetingDay = null;
+    let meetingDate = null;
+    
+    if (leavingDayIdx !== -1 && leavingSlotIdx !== -1) {
+      let nextDayIdx = leavingDayIdx;
+      let nextSlotIdx = leavingSlotIdx + 1;
+      
+      if (nextSlotIdx >= slots.length) {
+        nextSlotIdx = 0;
+        nextDayIdx = leavingDayIdx + 1;
+      }
+      
+      if (nextDayIdx >= dayNames.length) {
+        nextDayIdx = 0;
+      }
+      
+      if (nextDayIdx < dayNames.length && nextDayIdx >= 0) {
+        const targetDay = dayNames[nextDayIdx];
+        const targetSlot = slots[nextSlotIdx];
+        
+        // First try previous week
+        meetingNumber = getDraw(previousWeek, targetDay, targetSlot);
+        if (meetingNumber) {
+          meetingDay = targetDay;
+          meetingSlot = targetSlot;
+          const result = getDrawWithDate(previousWeek, targetDay, targetSlot);
+          if (result) meetingDate = result.date;
+        } else {
+          // Try current week as fallback
+          const draw = getDraw(currentWeek, targetDay, targetSlot);
+          if (draw) {
+            meetingNumber = draw;
+            meetingDay = targetDay;
+            meetingSlot = targetSlot;
+            const result = getDrawWithDate(currentWeek, targetDay, targetSlot);
+            if (result) meetingDate = result.date;
+          }
+        }
+      }
+    }
+    
+    return { leavingNumber, leavingSlot, leavingDay, leavingDate, meetingNumber, meetingSlot, meetingDay, meetingDate };
+  }
+
+  // ====================================
+  // GET UNDER TODAY (Previous Week's Draws)
+  // ====================================
+  function getUnderToday() {
+    const underToday = {};
+    for (const day of weekendDays) {
+      const dayData = {};
+      for (const slot of slots) {
+        const draw = getDraw(previousWeek, day, slot);
+        dayData[slot] = draw;
+      }
+      underToday[day] = dayData;
+    }
+    return underToday;
   }
 
   // ====================================
@@ -1265,9 +1380,9 @@ function renderWheWheWeekendPicks(weeksData) {
   const allPlayedSunday = getAllPlayedForDay("Sunday", weekendDraws);
   
   const topMarks = getTopMarks(weekendDraws);
-  
-  // Generate picks with Leaving/Meeting logic
   const slotPicks = generatePicksForSlots(weekendDraws);
+  const leavingMeeting = getLeavingMeeting();
+  const underToday = getUnderToday();
   
   if (weekendDraws.length === 0) {
     return `<div style="background: #ffffff; border-radius: 12px; padding: 20px; border: 1px solid #dddddd; text-align:center; color:#999;">📊 No weekend data available</div>`;
@@ -1278,61 +1393,85 @@ function renderWheWheWeekendPicks(weeksData) {
     defaultDayIndex = weekendDays.indexOf(todayName);
   }
   
-  // Generate carousel HTML with Leaving/Meeting info
+  // Generate carousel HTML with Under Today and Leaving/Meeting INSIDE the carousel
   let carouselSlides = '';
   for (let d = 0; d < weekendDays.length; d++) {
     const day = weekendDays[d];
     const isActive = d === defaultDayIndex;
-    const dayData = slotPicks[day] || { leaving: null, meeting: null, slots: {} };
+    const dayData = slotPicks[day] || { slots: {}, anchorNums: {} };
     const daySlots = dayData.slots || {};
-    const leaving = dayData.leaving;
-    const meeting = dayData.meeting;
+    const anchorNums = dayData.anchorNums || {};
+    
+    // Get Under Today data for this day
+    const dayUnderData = underToday[day] || {};
+    const isToday = day === todayName;
     
     carouselSlides += `
       <div class="weekend-carousel-slide" style="min-width: 100%; scroll-snap-align: start; padding: 0 4px; ${!isActive ? 'display: none;' : ''}" data-day="${day}">
         <div style="background: ${isActive ? 'rgba(255,157,0,0.05)' : 'rgba(255,255,255,0.02)'}; border-radius: 8px; padding: 6px; border: ${isActive ? '2px solid #ff9d00' : '1px solid #e0e0e0'}; margin-bottom: 6px;">
           
-  <!-- Day Header with Leaving/Meeting -->
+          <!-- Day Header -->
           <div style="text-align: center; margin-bottom: 4px;">
             <div style="font-size: 11px; font-weight: 700; color: ${isActive ? '#ff9d00' : '#666'};">
               ${day.toUpperCase()} ${isActive ? '🔥 TODAY' : ''}
             </div>
-            <div style="display: flex; justify-content: center; gap: 12px; font-size: 12px; color: #888; margin-top: 2px;">
-              <span style="color: #58a6ff;"><b>LEAVING: ${leaving ? `#${leaving}${spiritEmoji[leaving] || ''}` : '—'}</b></span>
-              <span style="color: #ff0a0a;"><b>MEETING: ${meeting ? `#${meeting}${spiritEmoji[meeting] || ''}` : '—'}</b></span>
+          </div>
+          
+          <!-- UNDER TODAY - Single Row Container INSIDE Carousel -->
+          <div style="margin-bottom: 6px; padding: 4px; background: #f5f5f5; border-radius: 6px; border: 1px solid #e0e0e0;">
+            <div style="font-size: 8px; font-weight: 700; color: #000; text-align: center; margin-bottom: 2px;">📅 UNDER TODAY</div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;">
+              ${slots.map(slot => {
+                const draw = dayUnderData[slot];
+                return `
+                  <div style="background: ${draw ? '#f8f8f8' : '#f0f0f0'}; border-radius: 3px; padding: 2px; text-align: center; font-size: 11px; font-weight: 700; color: ${draw ? '#000' : '#ccc'};">
+                    ${draw ? draw : '—'}
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
           
+  <!-- LEAVING & MEETING INSIDE Carousel -->
+    <div style="display: flex; justify-content: center; gap: 16px; padding: 4px; background: #fafafa; border-radius: 6px; border: 1px solid #e0e0e0; margin-bottom: 6px;">
+   <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="color: #58a6ff; font-weight: 800; font-size: 10px;">🔵 LEAVING</span>
+              <span style="font-size: 14px; font-weight: 900; color: #000;">${leavingMeeting.leavingNumber ? `#${leavingMeeting.leavingNumber}${spiritEmoji[leavingMeeting.leavingNumber] || ''}` : '—'}</span>
+              <span style="font-size: 7px; color: #888;">${leavingMeeting.leavingSlot || ''}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="color: #ff9d00; font-weight: 800; font-size: 10px;">🟡 MEETING</span>
+              <span style="font-size: 14px; font-weight: 900; color: #000;">${leavingMeeting.meetingNumber ? `#${leavingMeeting.meetingNumber}${spiritEmoji[leavingMeeting.meetingNumber] || ''}` : '—'}</span>
+              <span style="font-size: 7px; color: #888;">${leavingMeeting.meetingSlot || ''}</span>
+            </div>
+          </div>
+          
+          <!-- TOP 4 PICKS -->
           <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
     `;
 
     for (const slot of slots) {
       const picks = daySlots[slot] || [];
       const actualDraw = getCurrentWeekDraw(day, slot);
+      const anchorNum = anchorNums[slot];
       
       carouselSlides += `
         <div style="background: #f8f8f8; border-radius: 6px; padding: 4px; border: 1px solid #e8e8e8;">
-          <div style="text-align: center; font-size: 8px; font-weight: 700; color: #888; margin-bottom: 2px;">${slot}</div>
+          <div style="text-align: center; font-size: 8px; font-weight: 700; color: #888; margin-bottom: 2px;">
+            ${slot}
+
+          </div>
       `;
 
       for (let i = 0; i < 4; i++) {
         if (i < picks.length) {
           const pick = picks[i];
           const matched = checkMatch(pick.num, actualDraw);
-          const isLeaving = pick.num === leaving;
-          const isMeeting = pick.num === meeting;
           
           let bgColor = '#f8f8f8';
           let borderColor = '#e8e8e8';
           let textColor = '#000';
           let statusLabel = '';
-          let extraLabel = '';
-          
-          if (isLeaving) {
-            extraLabel = '🔵';
-          } else if (isMeeting) {
-            extraLabel = '🔴';
-          }
           
           if (matched === true) {
             bgColor = '#d4edda';
@@ -1354,7 +1493,6 @@ function renderWheWheWeekendPicks(weeksData) {
           carouselSlides += `
             <div style="background: ${bgColor}; border-radius: 3px; padding: 1px 2px; border: 1px solid ${borderColor}; text-align: center; margin-bottom: 1px;">
               <div style="display: flex; align-items: center; justify-content: center; gap: 2px;">
-                ${extraLabel ? `<span style="font-size: 8px;">${extraLabel}</span>` : ''}
                 <span style="font-size: 11px; font-weight: 800; color: ${textColor};">${pick.num}</span>
                 <span style="font-size: 8px;">${pick.emoji}</span>
                 <span style="font-size: 7px; color: ${textColor};">${statusLabel}</span>
@@ -1514,15 +1652,15 @@ function renderWheWheWeekendPicks(weeksData) {
     `;
 
     // ====================================
-    // BOTTOM SECTION: Scrollable Carousel with Leaving/Meeting
+    // BOTTOM SECTION: Scrollable Carousel with "Look Ahead" logic
     // ====================================
     html += `
       <div style="margin-top: 8px;">
         <div style="font-size: 11px; font-weight: 800; color: #000; text-align: center; margin-bottom: 6px; background: #f0f0f0; padding: 4px; border-radius: 4px;">
-          ♠️ TOP 4 PICKS PER DRAW - COMPARE WITH ACTUAL
+          ♠️ TOP 4 PICKS PER DRAW - LOOK AHEAD
         </div>
         <div style="font-size: 8px; color: #666; text-align: center; margin-bottom: 8px;">
- 🟢 = Match • ⚪ = Not Played Yet • ⚫ = No Match • <span style="color: #ff9d00; font-weight: 700;">← Swipe →</span>
+          🟢 = Match • ⚪ = Not Played Yet • ⚫ = No Match • <span style="color: #ff9d00; font-weight: 700;">← Swipe →</span>
         </div>
         
         <!-- Carousel Container -->
@@ -1644,7 +1782,6 @@ function renderWheWheWeekendPicks(weeksData) {
 
   return html;
 }
-
 ///////////////////////////////////////////
 
 // =====================================
